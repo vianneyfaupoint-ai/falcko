@@ -10,6 +10,9 @@ try:
     import pytesseract
     from PIL import Image
     import numpy as np
+    from urllib.parse import urlencode
+    import requests
+    from bs4 import BeautifulSoup
 except ImportError as e:
     print(f"⚠️ Erreur d'import : {e}")
     print("Les dépendances seront installées automatiquement par le workflow.")
@@ -18,15 +21,16 @@ except ImportError as e:
 # =====================================================================
 # SCRIPT D'EXTRACTION DE CONTENU - APPRENTISSAGE
 # =====================================================================
-# Ce script extrait :
-# 1. L'audio (MP3)
-# 2. Le texte (OCR)
-# 3. Les images clés (screenshots)
-# D'une vidéo YouTube ou autre source
+# Ce script peut :
+# 1. Chercher du contenu (Google Search)
+# 2. Extraire l'audio (MP3)
+# 3. Extraire le texte (OCR)
+# 4. Extraire les images clés (screenshots)
 # =====================================================================
 
-parser = argparse.ArgumentParser(description="Extracteur de contenu vidéo")
-parser.add_argument('--url', required=True, help='URL de la vidéo (YouTube, etc.)')
+parser = argparse.ArgumentParser(description="Extracteur de contenu vidéo multi-plateforme")
+parser.add_argument('--search', help='Rechercher du contenu (ex: "falcko error 404")')
+parser.add_argument('--url', help='URL directe de la vidéo (YouTube, Vimeo, etc.)')
 parser.add_argument('--output', default='output', help='Dossier de sortie')
 args = parser.parse_args()
 
@@ -36,7 +40,81 @@ output_dir.mkdir(exist_ok=True)
 
 print(f"\n{'='*60}")
 print(f" 🎬 EXTRACTEUR DE CONTENU - Mode Apprentissage")
-print(f"{'='*60}")
+print(f"{'='*60}\n")
+
+# =====================================================================
+# MODE 1 : RECHERCHE GOOGLE
+# =====================================================================
+if args.search:
+    print(f"🔍 Recherche : '{args.search}'\n")
+    
+    # Utiliser DuckDuckGo au lieu de Google (moins bloquant)
+    try:
+        search_url = f"https://duckduckgo.com/html/?q={urlencode({'q': args.search})}"
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        print("  📡 Recherche en cours...")
+        response = requests.get(search_url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Chercher les liens vidéo
+            results = []
+            links = soup.find_all('a', {'class': 'result__url'})
+            
+            for link in links[:10]:  # Top 10 résultats
+                try:
+                    href = link.get('href')
+                    text = link.get_text()
+                    
+                    if href and text:
+                        results.append({
+                            'title': text[:60],
+                            'url': href
+                        })
+                except:
+                    continue
+            
+            if results:
+                print(f"\n  ✅ {len(results)} résultats trouvés :\n")
+                for i, result in enumerate(results[:5], 1):
+                    print(f"  {i}. {result['title']}")
+                    print(f"     🔗 {result['url']}\n")
+                
+                # Sauvegarder les résultats
+                results_file = output_dir / "search_results.txt"
+                with open(results_file, 'w', encoding='utf-8') as f:
+                    f.write(f"Recherche : {args.search}\n")
+                    f.write("="*60 + "\n\n")
+                    for i, result in enumerate(results, 1):
+                        f.write(f"{i}. {result['title']}\n")
+                        f.write(f"   URL: {result['url']}\n\n")
+                
+                print(f"  📄 Résultats sauvegardés dans 'search_results.txt'")
+                print(f"  💡 Utilise --url pour télécharger une de ces vidéos\n")
+            else:
+                print(f"  ❌ Aucun résultat trouvé\n")
+        else:
+            print(f"  ⚠️ Erreur recherche (code {response.status_code})\n")
+            
+    except Exception as e:
+        print(f"  ⚠️ Erreur recherche : {str(e)[:100]}\n")
+    
+    sys.exit(0)
+
+# =====================================================================
+# MODE 2 : EXTRACTION D'UNE URL
+# =====================================================================
+if not args.url:
+    print("❌ Utilisation :")
+    print("   Pour chercher : python detector.py --search 'votre recherche'")
+    print("   Pour extraire : python detector.py --url 'https://...'")
+    sys.exit(1)
+
 print(f"URL : {args.url}")
 print(f"Output : {output_dir}")
 print(f"{'='*60}\n")
@@ -48,13 +126,12 @@ print("📥 [1/4] Téléchargement de la vidéo...")
 
 video_file = output_dir / "video.mp4"
 
-# Configuration pour contourner la détection de bot YouTube
+# Configuration pour contourner la détection de bot
 ydl_opts = {
     'format': 'best[ext=mp4]',
     'outtmpl': str(output_dir / 'video'),
     'quiet': False,
     'no_warnings': False,
-    # Techniques pour éviter la détection de bot
     'extractor_args': {
         'youtube': {
             'player_skip': ['js', 'configs'],
@@ -75,7 +152,7 @@ except Exception as e:
     print(f"  ⚠️ Erreur téléchargement (essai alternatif) : {str(e)[:100]}")
     print(f"  Tentative avec méthode alternative...\n")
     
-    # Essai alternatif avec options réduites
+    # Essai alternatif
     ydl_opts_alt = {
         'format': 'best',
         'outtmpl': str(output_dir / 'video'),
@@ -98,7 +175,6 @@ print("🎙️ [2/4] Extraction de l'audio et transcription...")
 
 audio_file = output_dir / "audio.mp3"
 try:
-    # Extraire l'audio avec FFmpeg (via yt-dlp)
     ydl_opts_audio = {
         'format': 'bestaudio/best',
         'outtmpl': str(output_dir / 'audio'),
@@ -117,7 +193,6 @@ try:
         print(f"  Extraction audio...")
         ydl.download([args.url])
     
-    # Transcrire avec Whisper
     print(f"  Initialisation de Whisper (modèle 'tiny' - rapide)...")
     model = whisper.load_model("tiny")
     
@@ -141,7 +216,6 @@ except Exception as e:
 print("📸 [3/4] Extraction de screenshots et OCR...")
 
 try:
-    # Chercher le fichier vidéo téléchargé
     video_files = list(output_dir.glob("video.*"))
     if not video_files:
         print(f"  ⚠️ Fichier vidéo introuvable\n")
@@ -157,9 +231,7 @@ try:
         cap.release()
         sys.exit(1)
     
-    # Extraire 5 frames clés
     frame_indices = np.linspace(0, frame_count - 1, 5, dtype=int)
-    
     ocr_results = []
     
     for i, frame_idx in enumerate(frame_indices):
@@ -167,11 +239,9 @@ try:
         ret, frame = cap.read()
         
         if ret:
-            # Sauvegarder l'image
             img_file = output_dir / f"frame_{i}.jpg"
             cv2.imwrite(str(img_file), frame)
             
-            # OCR avec Tesseract
             try:
                 text = pytesseract.image_to_string(frame)
                 if text.strip():
@@ -186,7 +256,6 @@ try:
     
     cap.release()
     
-    # Sauvegarder les résultats OCR
     if ocr_results:
         ocr_file = output_dir / "ocr_results.txt"
         with open(ocr_file, 'w', encoding='utf-8') as f:
@@ -213,16 +282,7 @@ for f in files_generated:
         size = f.stat().st_size
         size_str = f"{size / (1024*1024):.1f}MB" if size > 1024*1024 else f"{size / 1024:.1f}KB"
         print(f"   ✅ {f.name} ({size_str})")
-    else:
-        print(f"   📂 {f.name}/")
 
 print(f"\n{'='*60}")
 print(f" ✅ EXTRACTION COMPLÉTÉE")
-print(f"{'='*60}")
-print(f"\n📝 Fichiers disponibles :")
-print(f"   - transcript.txt : Transcription audio")
-print(f"   - ocr_results.txt : Texte extrait des images")
-print(f"   - frame_0.jpg à frame_4.jpg : Screenshots")
-print(f"   - audio.mp3 : Fichier audio")
-print(f"   - video.* : Fichier vidéo original")
-print(f"\n{'='*60}\n")
+print(f"{'='*60}\n")
