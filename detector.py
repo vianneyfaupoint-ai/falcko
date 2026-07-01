@@ -47,21 +47,49 @@ print(f"{'='*60}\n")
 print("📥 [1/4] Téléchargement de la vidéo...")
 
 video_file = output_dir / "video.mp4"
+
+# Configuration pour contourner la détection de bot YouTube
 ydl_opts = {
     'format': 'best[ext=mp4]',
     'outtmpl': str(output_dir / 'video'),
     'quiet': False,
     'no_warnings': False,
+    # Techniques pour éviter la détection de bot
+    'extractor_args': {
+        'youtube': {
+            'player_skip': ['js', 'configs'],
+        }
+    },
+    'socket_timeout': 30,
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
 }
 
 try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         print(f"  Téléchargement en cours...")
-        ydl.download([args.url])
-    print(f"  ✅ Vidéo téléchargée\n")
+        info = ydl.extract_info(args.url, download=True)
+        print(f"  ✅ Vidéo téléchargée\n")
 except Exception as e:
-    print(f"  ❌ Erreur téléchargement : {e}\n")
-    sys.exit(1)
+    print(f"  ⚠️ Erreur téléchargement (essai alternatif) : {str(e)[:100]}")
+    print(f"  Tentative avec méthode alternative...\n")
+    
+    # Essai alternatif avec options réduites
+    ydl_opts_alt = {
+        'format': 'best',
+        'outtmpl': str(output_dir / 'video'),
+        'quiet': False,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts_alt) as ydl:
+            info = ydl.extract_info(args.url, download=True)
+            print(f"  ✅ Vidéo téléchargée (méthode alternative)\n")
+    except Exception as e2:
+        print(f"  ❌ Impossible de télécharger : {e2}")
+        print(f"  💡 Conseil : YouTube peut nécessiter une authentification.")
+        print(f"  Essaie avec une URL différente ou une plateforme alternative.\n")
+        sys.exit(1)
 
 # =====================================================================
 # ÉTAPE 2 : EXTRAIRE L'AUDIO ET TRANSCRIRE
@@ -80,6 +108,9 @@ try:
             'preferredquality': '192',
         }],
         'quiet': False,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
     }
     
     with yt_dlp.YoutubeDL(ydl_opts_audio) as ydl:
@@ -110,9 +141,21 @@ except Exception as e:
 print("📸 [3/4] Extraction de screenshots et OCR...")
 
 try:
-    cap = cv2.VideoCapture(str(video_file))
+    # Chercher le fichier vidéo téléchargé
+    video_files = list(output_dir.glob("video.*"))
+    if not video_files:
+        print(f"  ⚠️ Fichier vidéo introuvable\n")
+        sys.exit(1)
+    
+    video_path = video_files[0]
+    cap = cv2.VideoCapture(str(video_path))
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS)
+    
+    if frame_count == 0:
+        print(f"  ⚠️ Impossible de lire la vidéo\n")
+        cap.release()
+        sys.exit(1)
     
     # Extraire 5 frames clés
     frame_indices = np.linspace(0, frame_count - 1, 5, dtype=int)
@@ -134,7 +177,7 @@ try:
                 if text.strip():
                     ocr_results.append({
                         'frame': i,
-                        'time': frame_idx / fps,
+                        'time': frame_idx / fps if fps > 0 else 0,
                         'text': text
                     })
                     print(f"  Frame {i} - Texte détecté : {text[:50]}...")
@@ -166,8 +209,12 @@ print("✨ [4/4] Récapitulatif des fichiers générés...\n")
 files_generated = list(output_dir.glob("*"))
 print(f"📁 Fichiers dans '{output_dir}' :")
 for f in files_generated:
-    size = f.stat().st_size if f.is_file() else "DIR"
-    print(f"   ✅ {f.name} ({size} bytes)" if f.is_file() else f"   📂 {f.name}/")
+    if f.is_file():
+        size = f.stat().st_size
+        size_str = f"{size / (1024*1024):.1f}MB" if size > 1024*1024 else f"{size / 1024:.1f}KB"
+        print(f"   ✅ {f.name} ({size_str})")
+    else:
+        print(f"   📂 {f.name}/")
 
 print(f"\n{'='*60}")
 print(f" ✅ EXTRACTION COMPLÉTÉE")
@@ -177,4 +224,5 @@ print(f"   - transcript.txt : Transcription audio")
 print(f"   - ocr_results.txt : Texte extrait des images")
 print(f"   - frame_0.jpg à frame_4.jpg : Screenshots")
 print(f"   - audio.mp3 : Fichier audio")
+print(f"   - video.* : Fichier vidéo original")
 print(f"\n{'='*60}\n")
