@@ -3,10 +3,14 @@ name: Content Extractor - Learning Mode
 on:
   workflow_dispatch:
     inputs:
+      search_query:
+        description: 'Rechercher du contenu (ex: "falcko error 404")'
+        required: false
+        default: ''
       video_url:
-        description: 'URL de la vidéo (YouTube, Vimeo, etc.)'
-        required: true
-        default: 'https://www.youtube.com/watch?v=example'
+        description: 'OU URL directe de la vidéo (YouTube, Vimeo, etc.)'
+        required: false
+        default: ''
 
 jobs:
   extract:
@@ -33,29 +37,55 @@ jobs:
     - name: 🔧 Installer les dépendances Python
       run: |
         pip install --upgrade pip
-        pip install yt-dlp openai-whisper torch opencv-python pytesseract pillow numpy
+        pip install yt-dlp openai-whisper torch opencv-python pytesseract pillow numpy requests beautifulsoup4
     
-    - name: 🎬 Lancer l'extraction de contenu
+    - name: 🔍 Mode Recherche (si query fourni)
+      if: github.event.inputs.search_query != ''
+      run: |
+        python detector.py --search "${{ github.event.inputs.search_query }}"
+    
+    - name: 🎬 Mode Extraction (si URL fourni)
+      if: github.event.inputs.video_url != ''
       run: |
         python detector.py --url "${{ github.event.inputs.video_url }}" --output extracted_content
     
+    - name: ❌ Erreur : aucun paramètre
+      if: github.event.inputs.search_query == '' && github.event.inputs.video_url == ''
+      run: |
+        echo "❌ Erreur : fournis soit --search soit --url"
+        exit 1
+    
     - name: 📤 Upload les fichiers extraits
-      if: always()
+      if: always() && github.event.inputs.video_url != ''
       uses: actions/upload-artifact@v4
       with:
         name: extracted-content
         path: extracted_content/
         retention-days: 7
     
+    - name: 📤 Upload les résultats de recherche
+      if: always() && github.event.inputs.search_query != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: search-results
+        path: output/
+        retention-days: 7
+    
     - name: 📊 Afficher le résumé
       if: always()
       run: |
         echo "========================================="
-        echo "✅ Extraction terminée !"
+        echo "✅ Opération terminée !"
         echo "========================================="
         echo ""
-        echo "📁 Fichiers générés :"
-        ls -lh extracted_content/ || echo "Aucun fichier généré"
+        if [ -d "extracted_content" ]; then
+          echo "📁 Fichiers extraits :"
+          ls -lh extracted_content/ || echo "Aucun fichier généré"
+        fi
+        if [ -d "output" ]; then
+          echo "📁 Résultats de recherche :"
+          ls -lh output/ || echo "Aucun résultat"
+        fi
         echo ""
         echo "💾 Téléchargez les fichiers via l'onglet 'Artifacts'"
         echo "========================================="
