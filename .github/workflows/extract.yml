@@ -49,7 +49,7 @@ jobs:
       run: |
         python detector.py --url "${{ github.event.inputs.video_url }}" --output extracted_content
     
-    - name: ❌ Erreur : aucun paramètre
+    - name:  Erreur : aucun paramètre
       if: github.event.inputs.search_query == '' && github.event.inputs.video_url == ''
       run: |
         echo "❌ Erreur : fournis soit search_query soit video_url"
