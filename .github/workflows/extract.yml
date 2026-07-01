@@ -8,7 +8,7 @@ on:
         required: false
         default: ''
       video_url:
-        description: 'OU URL directe de la vidéo (YouTube, Vimeo, etc.)'
+        description: 'URL directe de la vidéo (YouTube, Vimeo, etc.)'
         required: false
         default: ''
 
@@ -25,26 +25,26 @@ jobs:
       with:
         python-version: '3.10'
     
-    - name: 📦 Installer FFmpeg (conversion audio/vidéo)
+    - name: 📦 Installer FFmpeg
       run: |
         sudo apt-get update
         sudo apt-get install -y ffmpeg
     
-    - name: 📦 Installer Tesseract (OCR - reconnaissance de texte)
+    - name: 📦 Installer Tesseract OCR
       run: |
         sudo apt-get install -y tesseract-ocr
     
-    - name: 🔧 Installer les dépendances Python
+    - name: 🔧 Installer dépendances Python
       run: |
         pip install --upgrade pip
         pip install yt-dlp openai-whisper torch opencv-python pytesseract pillow numpy requests beautifulsoup4
     
-    - name: 🔍 Mode Recherche (si query fourni)
+    - name: 🔍 Mode Recherche
       if: github.event.inputs.search_query != ''
       run: |
         python detector.py --search "${{ github.event.inputs.search_query }}"
     
-    - name: 🎬 Mode Extraction (si URL fourni)
+    - name: 🎬 Mode Extraction
       if: github.event.inputs.video_url != ''
       run: |
         python detector.py --url "${{ github.event.inputs.video_url }}" --output extracted_content
@@ -52,10 +52,10 @@ jobs:
     - name: ❌ Erreur : aucun paramètre
       if: github.event.inputs.search_query == '' && github.event.inputs.video_url == ''
       run: |
-        echo "❌ Erreur : fournis soit --search soit --url"
+        echo "❌ Erreur : fournis soit search_query soit video_url"
         exit 1
     
-    - name: 📤 Upload les fichiers extraits
+    - name: 📤 Upload fichiers extraits
       if: always() && github.event.inputs.video_url != ''
       uses: actions/upload-artifact@v4
       with:
@@ -63,7 +63,7 @@ jobs:
         path: extracted_content/
         retention-days: 7
     
-    - name: 📤 Upload les résultats de recherche
+    - name: 📤 Upload résultats recherche
       if: always() && github.event.inputs.search_query != ''
       uses: actions/upload-artifact@v4
       with:
@@ -71,21 +71,19 @@ jobs:
         path: output/
         retention-days: 7
     
-    - name: 📊 Afficher le résumé
+    - name: 📊 Résumé
       if: always()
       run: |
         echo "========================================="
         echo "✅ Opération terminée !"
         echo "========================================="
-        echo ""
         if [ -d "extracted_content" ]; then
           echo "📁 Fichiers extraits :"
-          ls -lh extracted_content/ || echo "Aucun fichier généré"
+          ls -lh extracted_content/ 2>/dev/null || echo "Aucun fichier"
         fi
         if [ -d "output" ]; then
-          echo "📁 Résultats de recherche :"
-          ls -lh output/ || echo "Aucun résultat"
+          echo "📁 Résultats recherche :"
+          ls -lh output/ 2>/dev/null || echo "Aucun résultat"
         fi
-        echo ""
-        echo "💾 Téléchargez les fichiers via l'onglet 'Artifacts'"
+        echo "💾 Téléchargez via l'onglet Artifacts"
         echo "========================================="
