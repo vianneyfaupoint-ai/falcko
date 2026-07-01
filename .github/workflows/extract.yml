@@ -1,0 +1,61 @@
+name: Content Extractor - Learning Mode
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'URL de la vidéo (YouTube, Vimeo, etc.)'
+        required: true
+        default: 'https://www.youtube.com/watch?v=example'
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Récupérer le code du dépôt
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Configurer Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: 📦 Installer FFmpeg (conversion audio/vidéo)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+    
+    - name: 📦 Installer Tesseract (OCR - reconnaissance de texte)
+      run: |
+        sudo apt-get install -y tesseract-ocr
+    
+    - name: 🔧 Installer les dépendances Python
+      run: |
+        pip install --upgrade pip
+        pip install yt-dlp openai-whisper torch opencv-python pytesseract pillow numpy
+    
+    - name: 🎬 Lancer l'extraction de contenu
+      run: |
+        python detector.py --url "${{ github.event.inputs.video_url }}" --output extracted_content
+    
+    - name: 📤 Upload les fichiers extraits
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: extracted-content
+        path: extracted_content/
+        retention-days: 7
+    
+    - name: 📊 Afficher le résumé
+      if: always()
+      run: |
+        echo "========================================="
+        echo "✅ Extraction terminée !"
+        echo "========================================="
+        echo ""
+        echo "📁 Fichiers générés :"
+        ls -lh extracted_content/ || echo "Aucun fichier généré"
+        echo ""
+        echo "💾 Téléchargez les fichiers via l'onglet 'Artifacts'"
+        echo "========================================="
